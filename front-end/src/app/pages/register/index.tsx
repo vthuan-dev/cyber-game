@@ -7,12 +7,14 @@ import styled from 'styled-components';
 import { Button, Box } from '@mui/material';
 import { useForm, type SubmitHandler } from 'react-hook-form';
 import { yupResolver } from '@hookform/resolvers/yup';
-import { useNavigate } from 'react-router-dom';
+import { Link, useNavigate } from 'react-router-dom';
+import { toast } from 'react-toastify';
 
 import stillPamingNoBack from '../../assets/images/still-gaming-no-back.png';
 
 import { validationSchema, type ValidationType } from './validation';
 import { apiPostRegister } from './service';
+import { ROUTE_PATH } from '@constants';
 
 import { ControllerTextField, ControllerTextFieldPassword } from '@components/formController';
 
@@ -24,7 +26,32 @@ const Register = () => {
       defaultValues: validationSchema.getDefault(),
    });
 
-   const { mutate } = apiPostRegister(navigate);
+   const { mutate } = apiPostRegister({
+      onSuccess: () => {
+         toast.success('Đăng ký tài khoản thành công!', {
+            position: "top-right",
+            autoClose: 3000,
+            hideProgressBar: false,
+            closeOnClick: true,
+            pauseOnHover: true,
+            draggable: true,
+         });
+         navigate('/login');
+      },
+      onError: (error: any) => {
+         if (error.response?.data?.message === "Email đã được sử dụng") {
+            toast.error('Email này đã được sử dụng, vui lòng sử dụng email khác!', {
+               position: "top-right",
+               autoClose: 3000,
+            });
+         } else {
+            toast.error('Đăng ký thất bại. Vui lòng thử lại sau!', {
+               position: "top-right",
+               autoClose: 3000,
+            });
+         }
+      }
+   });
 
    const handleSubmitForm: SubmitHandler<ValidationType> = (data) => {
       mutate(data);
@@ -52,7 +79,7 @@ const Register = () => {
                </Button>
 
                <FooterText>
-                  Bạn đã có tài khoản? <a href="#">Đăng nhập</a>
+                  Bạn đã có tài khoản? <Link to={ROUTE_PATH.SIGN_IN}>Đăng nhập</Link>
                </FooterText>
             </FormBox>
          </FormContainer>

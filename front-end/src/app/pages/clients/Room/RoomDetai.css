@@ -1,0 +1,140 @@
+.room-detail-container {
+    max-width: 1200px;
+    margin: 0 auto;
+    padding: 20px;
+ }
+ 
+ .room-detail-wrapper {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 30px;
+    margin-bottom: 40px;
+ }
+ 
+ .room-image {
+    border-radius: 10px;
+    overflow: hidden;
+ }
+ 
+ .main-image {
+    width: 100%;
+    height: 400px;
+    object-fit: cover;
+    transition: transform 0.3s ease;
+ }
+ 
+ .main-image:hover {
+    transform: scale(1.05);
+ }
+ 
+ .room-info {
+    padding: 20px;
+ }
+ 
+ .room-name {
+    font-size: 28px;
+    font-weight: 700;
+    color: #333;
+    margin-bottom: 20px;
+ }
+ 
+ .price-box {
+    margin: 20px 0;
+ }
+ 
+ .current-price {
+    font-size: 24px;
+    color: #ff4d4d;
+    font-weight: 700;
+ }
+ 
+ .room-specs {
+    margin-top: 20px;
+ }
+ 
+ .spec-item {
+    display: flex;
+    margin-bottom: 15px;
+    padding: 10px;
+    background-color: #f8f9fa;
+    border-radius: 5px;
+ }
+ 
+ .spec-label {
+    min-width: 150px;
+    font-weight: 600;
+    color: #333;
+ }
+ 
+ .spec-value {
+    color: #666;
+ }
+ 
+ .computers-section {
+    margin-top: 40px;
+ }
+ 
+ .section-title {
+    font-size: 24px;
+    color: #333;
+    margin-bottom: 20px;
+ }
+ 
+ .computers-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
+    gap: 20px;
+ }
+ 
+ .computer-card {
+    padding: 20px;
+    background-color: #f8f9fa;
+    border-radius: 10px;
+    text-align: center;
+    transition: transform 0.3s ease;
+ }
+ 
+ .computer-card:hover {
+    transform: translateY(-5px);
+    box-shadow: 0 5px 15px rgba(0,0,0,0.1);
+ }
+ 
+ .computer-icon {
+    font-size: 40px;
+    color: #3f51b5;
+    margin-bottom: 10px;
+ }
+ 
+ .computer-number {
+    display: block;
+    font-size: 16px;
+    font-weight: 600;
+    color: #333;
+    margin-bottom: 5px;
+ }
+ 
+ .computer-status {
+    display: inline-block;
+    padding: 5px 10px;
+    border-radius: 15px;
+    font-size: 14px;
+ }
+ 
+ .computer-status.available {
+    background-color: #e8f5e9;
+    color: #2e7d32;
+ }
+ 
+ @media (max-width: 768px) {
+    .room-detail-wrapper {
+       grid-template-columns: 1fr;
+    }
+ 
+    .main-image {
+       height: 300px;
+    }
+ 
+    .computers-grid {
+       grid-template-columns: repeat(auto-fill, minmax(150px, 1fr));
+    }
+ }

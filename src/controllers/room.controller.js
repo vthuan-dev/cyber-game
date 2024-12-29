@@ -119,14 +119,97 @@ export const findById = async (req, res) => {
 export const deleteById = async (req, res) => {
   try {
     const { id } = req.params;
-    const category = await roomModel.delete(id);
-    const data = {
-      message: "Xóa dữ liệu thành công",
-      data: category,
-    };
-    return responseSuccess(res, data);
+
+    // Kiểm tra phòng có tồn tại
+    const room = await roomModel.findById(id);
+    if (!room) {
+      return responseError(res, {
+        message: "Không tìm thấy phòng",
+        statusCode: 404
+      });
+    }
+
+    // Kiểm tra chi tiết về việc sử dụng phòng
+    const checkUsageQuery = `
+      SELECT 
+        (SELECT COUNT(*) FROM room_order_detail rod
+         JOIN orders o ON rod.order_id = o.id
+         WHERE rod.room_id = ? 
+         AND o.status IN ('PENDING', 'CHECKED_IN')
+         AND rod.end_time > NOW()) as activeBookings,
+        (SELECT COUNT(*) FROM cart 
+         WHERE room_id = ?) as cartItems
+    `;
+    
+    const [[usage]] = await roomModel.connection
+      .promise()
+      .query(checkUsageQuery, [id, id]);
+
+    // Kiểm tra và trả về thông báo chi tiết
+    if (usage.activeBookings > 0) {
+      return responseError(res, {
+        message: "Không thể xóa phòng vì đang có người đặt hoặc đang sử dụng",
+        details: {
+          activeBookings: usage.activeBookings
+        },
+        statusCode: 400
+      });
+    }
+
+    if (usage.cartItems > 0) {
+      return responseError(res, {
+        message: "Không thể xóa phòng vì đang có trong giỏ hàng của khách",
+        details: {
+          cartItems: usage.cartItems
+        },
+        statusCode: 400
+      });
+    }
+
+    // Thực hiện xóa theo thứ tự để tránh lỗi khóa ngoại
+    const deleteQueries = [
+      // 1. Xóa các mục trong giỏ hàng liên quan đến phòng
+      'DELETE FROM cart WHERE room_id = ?',
+      
+      // 2. Xóa các máy tính trong phòng
+      'DELETE FROM desktop WHERE room_id = ?',
+      
+      // 3. Xóa lịch sử đặt phòng đã hoàn thành
+      `DELETE rod FROM room_order_detail rod
+       JOIN orders o ON rod.order_id = o.id
+       WHERE rod.room_id = ? AND o.status = 'COMPLETED'`,
+      
+      // 4. Cuối cùng xóa phòng
+      'DELETE FROM room WHERE id = ?'
+    ];
+
+    // Thực hiện các câu query xóa trong transaction
+    await roomModel.connection.promise().beginTransaction();
+    
+    try {
+      for (const query of deleteQueries) {
+        await roomModel.connection.promise().query(query, [id]);
+      }
+      
+      await roomModel.connection.promise().commit();
+      
+      return responseSuccess(res, {
+        message: "Xóa phòng thành công",
+        data: { id }
+      });
+      
+    } catch (error) {
+      await roomModel.connection.promise().rollback();
+      throw error;
+    }
+
   } catch (error) {
-    return responseError(res, error);
+    console.error("Error deleting room:", error);
+    return responseError(res, {
+      message: "Lỗi khi xóa phòng",
+      error: error.message,
+      statusCode: 500
+    });
   }
 };
 

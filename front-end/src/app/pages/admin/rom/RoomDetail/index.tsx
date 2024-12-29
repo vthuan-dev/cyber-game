@@ -3,15 +3,17 @@
 /* eslint-disable @typescript-eslint/no-unsafe-call */
 /* eslint-disable @typescript-eslint/no-unsafe-member-access */
 /* eslint-disable @typescript-eslint/no-unsafe-assignment */
-import { Box, Grid, Typography } from '@mui/material';
+import { Box, Grid, Typography, Button } from '@mui/material';
 import { useQuery } from '@tanstack/react-query';
-import { useParams } from 'react-router-dom';
+import { useParams, useNavigate } from 'react-router-dom';
+import DeleteIcon from '@mui/icons-material/Delete';
 
 import DesktopItem from '../components/DesktopItem';
 
 import BaseBreadcrumbs from '@components/design-systems/BaseBreadcrumbs/BaseBreadcrumbs';
 import { ROUTE_PATH } from '@constants';
-import { getRequest } from '~/app/configs';
+import { getRequest, deleteRequest } from '~/app/configs';
+import { toast } from 'react-toastify';
 
 const breadcrumbs = [
    {
@@ -26,6 +28,7 @@ const breadcrumbs = [
 
 const RoomDetail = () => {
    const { id } = useParams();
+   const navigate = useNavigate();
 
    const { data: roomDetail } = useQuery<ResponseGet<RoomItem>>({
       queryFn: () => getRequest(`/room/searchById/${id}`),
@@ -33,8 +36,39 @@ const RoomDetail = () => {
 
    const description = roomDetail ? (roomDetail?.data.description ? JSON.parse(roomDetail?.data.description) : []) : [];
 
+   const handleDeleteRoom = async () => {
+      try {
+         const checkRoomInUse = await getRequest(`/room/check-in-use/${id}`);
+         
+         if (checkRoomInUse.isInUse) {
+            toast.warning('Không thể xóa phòng này vì đang có người đặt!');
+            return;
+         }
+
+         if (!window.confirm('Bạn có chắc chắn muốn xóa phòng này?')) {
+            return;
+         }
+
+         await deleteRequest(`/room/${id}`);
+         toast.success('Xóa phòng thành công');
+         navigate(ROUTE_PATH.ADMIN_ROM);
+      } catch (error: any) {
+         toast.error(error?.response?.data?.message || 'Có lỗi xảy ra khi xóa phòng');
+      }
+   };
+
    return (
       <BaseBreadcrumbs arialabel={`Chi tiết phòng ${roomDetail?.data.room_name}`} breadcrumbs={breadcrumbs}>
+         <Box display="flex" justifyContent="flex-end" mb={2}>
+            <Button
+               variant="contained"
+               color="error"
+               startIcon={<DeleteIcon />}
+               onClick={handleDeleteRoom}
+            >
+               Xóa phòng
+            </Button>
+         </Box>
          <Grid container>
             <Grid item xs={6}>
                <Box

@@ -39,19 +39,29 @@ export const create = async (req, res) => {
   try {
     const { password, ...remainBody } = req.body;
 
-    const hashPassword = await usersModel.bcryptPassword(password);
-
-    const data = {
+    const user = await usersModel.createUser({
       ...remainBody,
-      password: hashPassword,
-      is_vip: 1,
-      user_type: roles.USER,
-    };
+      password,
+    });
 
-    const user = await usersModel.create(data);
-    return responseSuccess(res, user);
+    return responseSuccess(res, {
+      message: "Đăng ký tài khoản thành công",
+      data: user
+    });
   } catch (error) {
-    return responseError(res, error);
+    console.error("Create user error:", error);
+    
+    if (error.status === 400) {
+      return responseError(res, {
+        status: 400,
+        message: error.message
+      });
+    }
+    
+    return responseError(res, {
+      status: 500,
+      message: "Đã xảy ra lỗi khi tạo tài khoản"
+    });
   }
 };
 

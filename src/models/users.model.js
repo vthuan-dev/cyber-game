@@ -68,6 +68,103 @@ class UserModel extends BaseModel {
       throw error; // Ném lại lỗi để xử lý trong controller
     }
   }
+
+  // Thêm phương thức kiểm tra email tồn tại
+  async findByEmail(email) {
+    try {
+      const [rows] = await this.connection.promise().query(
+        `SELECT * FROM ${this.table} WHERE email = ?`,
+        [email]
+      );
+      return rows.length > 0 ? rows[0] : null;
+    } catch (error) {
+      console.error("Error checking email:", error);
+      throw error;
+    }
+  }
+
+  async findOne(conditions) {
+    try {
+      // Nếu conditions là object
+      if (typeof conditions === 'object') {
+        const keys = Object.keys(conditions);
+        const values = Object.values(conditions);
+        const whereClause = keys.map(key => `${key} = ?`).join(' AND ');
+        
+        const [rows] = await this.connection.promise().query(
+          `SELECT * FROM ${this.table} WHERE ${whereClause} LIMIT 1`,
+          values
+        );
+        return rows[0] || null;
+      }
+      
+      // Nếu conditions là string (trường hợp cũ)
+      const [rows] = await this.connection.promise().query(
+        `SELECT * FROM ${this.table} WHERE ${conditions} LIMIT 1`
+      );
+      return rows[0] || null;
+    } catch (error) {
+      console.error("Error in findOne:", error);
+      throw error;
+    }
+  }
+
+  async createUser(userData) {
+    try {
+      console.log("Creating user with data:", userData);
+      
+      // Loại bỏ passwordConfirm từ userData
+      const { passwordComfirm, ...userDataToSave } = userData;
+      
+      // Kiểm tra email và username tồn tại
+      const existingEmail = await this.findOne({ email: userDataToSave.email });
+      if (existingEmail) {
+        throw {
+          status: 400,
+          message: "Email đã được sử dụng"
+        };
+      }
+
+      const existingUsername = await this.findOne({ username: userDataToSave.username });
+      if (existingUsername) {
+        throw {
+          status: 400,
+          message: "Username đã được sử dụng"
+        };
+      }
+
+      // Hash password
+      const hashedPassword = await this.bcryptPassword(userDataToSave.password);
+
+      // Tạo user mới với password đã hash
+      const newUserData = {
+        ...userDataToSave,
+        password: hashedPassword,
+        is_vip: 0,
+        user_type: 0, // 0: normal user, 1: admin
+        created_at: new Date()
+      };
+
+      // Thực hiện insert
+      const [result] = await this.connection.promise().query(
+        `INSERT INTO ${this.table} SET ?`,
+        [newUserData]
+      );
+
+      console.log("Insert result:", result);
+
+      // Trả về user đã tạo (không bao gồm password)
+      return {
+        id: result.insertId,
+        ...newUserData,
+        password: undefined
+      };
+
+    } catch (error) {
+      console.error("Error creating user:", error);
+      throw error;
+    }
+  }
 }
 
 export default new UserModel();
