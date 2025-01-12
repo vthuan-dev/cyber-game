@@ -57,7 +57,7 @@ const Order = () => {
    const renderStatus = React.useCallback((status: OrderStatusKey) => {
       return (
          <Chip
-            label={ORDER_STATUS_LABELS[status] || 'Không xác định'}
+            label={ORDER_STATUS_LABELS[status] || 'Đã thanh toán'}
             color={statusButtonColors[status] || 'default'}
             sx={{
                borderRadius: '6px',

@@ -8,6 +8,7 @@ import { ROUTE_PATH } from '~/app/constants';
 import SignIn from '~/app/pages/sign-in';
 import Register from '@pages/register';
 import SaveOnlinePayment from '@pages/clients/Cart/components/SaveOnlinePayment';
+import PaymentCallback from '../pages/clients/Cart/components/PaymentCallback';
 
 const routes = (): RouteObject[] => {
    return [
@@ -46,6 +47,11 @@ const routes = (): RouteObject[] => {
          path: '*',
          element: <>404</>,
       },
+
+      {
+         path: '/payment/callback/vnpay_return',
+         element: <PaymentCallback />
+      }
    ];
 };
 

@@ -68,6 +68,7 @@ export const ORDER_STATUS_LABELS = Object.freeze({
    CHECKED_IN: 'Đã thanh toán',
    CHECKED_OUT: 'Hoàn thành',
    CANCELLED: 'Đã hủy',
+   PAID: 'Đã thanh toán',
 });
 
 export type OrderStatusKey = keyof typeof ORDER_STATUS;

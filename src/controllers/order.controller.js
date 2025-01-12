@@ -10,6 +10,13 @@ import { sendMail } from "../helpers/sendMail";
 import { calculateRoomPrice } from "../helpers/calculatePrice";
 import { promisePool } from '../configs/db.config';
 
+// Chỉ định nghĩa PAYMENT_STATUS
+const PAYMENT_STATUS = {
+  UNPAID: 0,
+  PAID: 1,
+  FAILED: 2
+};
+
 export const getAll = async (req, res) => {
   try {
     const { query } = req;
@@ -116,13 +123,33 @@ export const create = async (req, res) => {
 
     await connection.commit();
 
+<<<<<<< HEAD
+=======
+    // Gửi email
+    const sendEmail = {
+      order_id,
+      username,
+      total: totalOrderPrice,
+      email
+    };
+    await sendMail(getOrderSuccessNotify(sendEmail));
+
+    // Trả về response với thông tin đầy đủ
+>>>>>>> 27026e29d22bf27015f3cf44dc20a703454c8588
     return responseSuccess(res, {
       message: "Tạo đơn hàng thành công",
       data: {
-        order_id,
+        insertId: result.insertId,
+        order_id: result.insertId,
         total_money: totalOrderPrice,
+<<<<<<< HEAD
         payment_method,
         status: payment_method === 2 ? 'PENDING' : 'CONFIRMED'
+=======
+        status: orderStatus,
+        payment_status: paymentStatus,
+        payment_method: payment_method
+>>>>>>> 27026e29d22bf27015f3cf44dc20a703454c8588
       }
     });
 
@@ -1291,5 +1318,49 @@ export const statisticRoomDetail = async (req, res) => {
   } catch (error) {
     console.error("Statistic room detail error:", error);
     return responseError(res, error);
+  }
+};
+
+// Thêm hàm mới để cập nhật trạng thái sau khi thanh toán VNPay thành công
+export const updateOrderAfterPayment = async (req, res) => {
+  const connection = await orderModel.connection.promise();
+  try {
+    const { orderId } = req.params;
+    const { vnp_ResponseCode, vnp_TransactionStatus } = req.query;
+
+    await connection.beginTransaction();
+
+    if (vnp_ResponseCode === '00' && vnp_TransactionStatus === '00') {
+      // Thanh toán thành công - luôn set status là PAID
+      await connection.query(
+        `UPDATE orders 
+         SET status = ?, 
+             payment_status = ?,
+             updated_at = NOW() 
+         WHERE id = ?`,
+        ['PAID', 'PAID', orderId]
+      );
+
+      await connection.commit();
+      return res.redirect(`/payment-success?orderId=${orderId}`);
+    } else {
+      // Thanh toán thất bại
+      await connection.query(
+        `UPDATE orders 
+         SET status = ?, 
+             payment_status = ?,
+             updated_at = NOW() 
+         WHERE id = ?`,
+        ['PENDING_PAYMENT', 'FAILED', orderId]
+      );
+
+      await connection.commit();
+      return res.redirect(`/payment-failed?orderId=${orderId}`);
+    }
+
+  } catch (error) {
+    if (connection) await connection.rollback();
+    console.error("Update order payment status error:", error);
+    return res.redirect('/payment-error');
   }
 };

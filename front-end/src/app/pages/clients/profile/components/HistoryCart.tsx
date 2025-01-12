@@ -121,6 +121,29 @@ const formatCurrency = (amount: number) => {
    }).format(amount);
 };
 
+const getStatusChipProps = (orderStatus: string, paymentStatus: number) => {
+   if (orderStatus === 'PENDING_PAYMENT') {
+     return {
+       label: 'Đã thanh toán',
+       color: 'success' as const,
+     };
+   } else if (orderStatus === 'CONFIRMED' && paymentStatus === 1) {
+     return {
+       label: 'Đã thanh toán',
+       color: 'success' as const,
+     };
+   } else if (orderStatus === 'CANCELLED') {
+     return {
+       label: 'Đã hủy',
+       color: 'error' as const,
+     };
+   }
+   return {
+     label: orderStatus,
+     color: 'default' as const,
+   };
+};
+
 const HistoryCart = () => {
    const { user } = useAuth();
    const [openModal, setOpenModal] = useState(false);
@@ -180,12 +203,43 @@ const HistoryCart = () => {
          handleCloseExtendModal();
          queryClient.invalidateQueries(['admin-order-user-id']);
          queryClient.invalidateQueries(['extend-requests']);
-         toast.success('Yêu cầu gia hạn đã được gửi');
+         toast.success('Yêu cầu gia hạn đã được gửi', {
+            toastId: 'extend-request-success',
+            position: "top-right",
+            autoClose: 3000,
+            hideProgressBar: false,
+         });
       },
       onError: (error: any) => {
-         toast.error(error?.response?.data?.message || 'Có lỗi xảy ra');
+         toast.error(error?.response?.data?.message || 'Có lỗi xảy ra', {
+            toastId: 'extend-request-error',
+         });
       }
    });
+
+   const paymentMutation = useMutation({
+      mutationFn: (data: { request_id: number }) =>
+         postRequest('/order/extend-payment', data),
+      onSuccess: () => {
+         queryClient.invalidateQueries(['admin-order-user-id']);
+         queryClient.invalidateQueries(['extend-requests']);
+         toast.success('Thanh toán thành công!', {
+            toastId: 'payment-success',
+            position: "top-right",
+            autoClose: 3000,
+            hideProgressBar: false,
+         });
+      },
+      onError: (error: any) => {
+         toast.error(error?.response?.data?.message || 'Thanh toán thất bại', {
+            toastId: 'payment-error',
+         });
+      }
+   });
+
+   const handlePayment = (requestId: number) => {
+      paymentMutation.mutate({ request_id: requestId });
+   };
 
    const handleOpenModal = (order: OrderData) => {
       setSelectedOrder(order);
@@ -392,10 +446,14 @@ const HistoryCart = () => {
                         </TableCell>
                         <TableCell>
                            <Chip
-                              label={order.order_status}
-                              color={order.payment_status === 1 ? 'success' : 'error'}
+                              {...getStatusChipProps(order.order_status, order.payment_status)}
                               variant="outlined"
                               size="small"
+                              sx={{
+                                 animation: order.order_status === 'PENDING_PAYMENT' 
+                                    ? `${styles['pulse']} 2s infinite` 
+                                    : 'none',
+                              }}
                            />
                         </TableCell>
                         <TableCell>

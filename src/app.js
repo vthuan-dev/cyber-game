@@ -82,6 +82,7 @@ io.on("connection", (socket) => {
     }
   });
 
+
   // Xử lý typing status
   socket.on("typing", (data) => {
     const { conversation_id, username } = data;

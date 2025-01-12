@@ -43,6 +43,7 @@
     "node-cron": "^3.0.3",
     "nodemailer": "^6.9.16",
     "querystring": "^0.2.1",
+    "react-hot-toast": "^2.4.1",
     "socket.io": "^4.8.1",
     "swagger-jsdoc": "^6.2.5",
     "swagger-ui-express": "^4.6.0",
