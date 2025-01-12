@@ -10,60 +10,57 @@ const config = {
   vnpUrl: process.env.VNPAY_URL,
   returnUrl: process.env.VNPAY_RETURN_URL,
 };
-export function createPayment(req, res, next) {
-  const { amount, orderId } = req.body;
+export function createPayment(req, res) {
   try {
-    const ipAddr =
-      req.headers["x-forwarded-for"] ||
-      req.connection.remoteAddress ||
-      req.socket.remoteAddress ||
-      req.connection.socket.remoteAddress;
-
-    const { returnUrl, secretKey, tmnCode } = config;
-    let vnpUrl = config.vnpUrl;
-    const date = new Date();
-
-    let createDate = moment(date).format("YYYYMMDDHHmmss");
-
-    // const amount = 100000;
-    // const bankCode = "ACB";
-    const orderInfo = "Noi dung thanh toan";
-    const orderType = "billpayment ";
-    const locale = "vn";
-    if (locale === null || locale === "") {
-      locale = "vn";
+    const { amount, orderId } = req.body;
+    
+    if (!amount || !orderId) {
+      return res.status(400).json({ 
+        success: false, 
+        message: 'Missing amount or orderId' 
+      });
     }
-    const currCode = "VND";
-    let vnp_Params = {};
-    vnp_Params["vnp_Version"] = "2.1.0";
-    vnp_Params["vnp_Command"] = "pay";
-    vnp_Params["vnp_TmnCode"] = tmnCode;
-    // vnp_Params['vnp_Merchant'] = ''
-    vnp_Params["vnp_Locale"] = locale;
-    vnp_Params["vnp_CurrCode"] = currCode;
-    vnp_Params["vnp_TxnRef"] = orderId;
-    vnp_Params["vnp_OrderInfo"] = orderInfo;
-    vnp_Params["vnp_OrderType"] = orderType;
-    vnp_Params["vnp_Amount"] = amount * 100;
-    vnp_Params["vnp_ReturnUrl"] = returnUrl;
-    vnp_Params["vnp_IpAddr"] = ipAddr;
-    vnp_Params["vnp_CreateDate"] = createDate;
-    // if (bankCode !== null && bankCode !== "") {
-    //   vnp_Params["vnp_BankCode"] = bankCode;
-    // }
 
-    vnp_Params = sortObject(vnp_Params);
+    const ipAddr = req.headers["x-forwarded-for"] || 
+                  req.connection.remoteAddress;
 
-    const signData = querystring.stringify(vnp_Params, { encode: false });
-    const hmac = crypto.createHmac("sha512", secretKey);
+    const createDate = moment().format('YYYYMMDDHHmmss');
+    
+    const vnp_Params = {
+      vnp_Version: '2.1.0',
+      vnp_Command: 'pay',
+      vnp_TmnCode: config.tmnCode,
+      vnp_Locale: 'vn',
+      vnp_CurrCode: 'VND',
+      vnp_TxnRef: orderId,
+      vnp_OrderInfo: 'Thanh toan don hang ' + orderId,
+      vnp_OrderType: 'billpayment',
+      vnp_Amount: amount * 100,
+      vnp_ReturnUrl: config.returnUrl,
+      vnp_IpAddr: ipAddr,
+      vnp_CreateDate: createDate,
+    };
+
+    const sortedParams = sortObject(vnp_Params);
+    const signData = querystring.stringify(sortedParams, { encode: false });
+    const hmac = crypto.createHmac("sha512", config.secretKey);
     const signed = hmac.update(new Buffer(signData, "utf-8")).digest("hex");
+    
+    sortedParams['vnp_SecureHash'] = signed;
+    const vnpUrl = config.vnpUrl + "?" + querystring.stringify(sortedParams, { encode: false });
 
-    vnp_Params["vnp_SecureHash"] = signed;
-    vnpUrl += "?" + querystring.stringify(vnp_Params, { encode: false });
-
-    res.redirect(vnpUrl);
+    return res.status(200).json({
+      success: true,
+      data: {
+        vnpUrl
+      }
+    });
   } catch (error) {
-    console.log(error);
+    console.error('Create payment error:', error);
+    return res.status(500).json({ 
+      success: false, 
+      message: error.message 
+    });
   }
 }
 
@@ -84,7 +81,6 @@ function sortObject(obj) {
   }
   return sorted;
 }
-
 export async function savePayment(req, res, next) {
   try {
     let vnp_Params = req.query;
@@ -165,3 +161,4 @@ export async function savePayment(req, res, next) {
     res.status(400).json({ Message: "Server error", success: false });
   }
 }
+

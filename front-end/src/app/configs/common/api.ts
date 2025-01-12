@@ -23,7 +23,13 @@ export const postRequest = (url: string, data: any, config?: AxiosRequestConfig)
    return new Promise((resolve, reject) => {
       baseApi
          .post(url, data, config)
-         .then((res: AxiosResponse) => resolve(res?.data))
+         .then((res: AxiosResponse) => {
+            if (res?.data?.data) {
+               resolve(res.data);
+            } else {
+               resolve(res);
+            }
+         })
          .catch((err: AxiosError) => reject(err));
    });
 };

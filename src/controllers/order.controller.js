@@ -8,6 +8,7 @@ import { ORDER_STATUS, ORDER_TYPE } from "../config/constant";
 import { getBillNotify, getOrderSuccessNotify } from "../helpers/emailTemplate";
 import { sendMail } from "../helpers/sendMail";
 import { calculateRoomPrice } from "../helpers/calculatePrice";
+import { promisePool } from '../configs/db.config';
 
 export const getAll = async (req, res) => {
   try {
@@ -37,129 +38,106 @@ export const getAll = async (req, res) => {
 };
 
 export const create = async (req, res) => {
-  const connection = await orderModel.connection.promise();
+  const connection = await promisePool.getConnection();
   try {
-    const { rooms, products, username, email, ...remainBody } = req.body;
+    const { rooms, products, username, email, payment_method, user_id, ...remainBody } = req.body;
     
     await connection.beginTransaction();
 
-    // Tạo order
-    const result = await orderModel.create({
-      ...remainBody,
-      status: ORDER_STATUS.CONFIRMED,
-    });
-
-    const order_id = result?.insertId;
+    // Tính tổng tiền trước khi tạo order
     let totalOrderPrice = 0;
 
-    // 1. Xử lý đặt phòng
+    // Tính tiền phòng
     if (rooms && rooms.length > 0) {
       for (const room of rooms) {
-        try {
-          // Lấy thông tin phòng và user
-          const [roomInfo] = await connection.query(`
-            SELECT price, room_name FROM room WHERE id = ?
-          `, [room.room_id]);
+        const [roomInfo] = await connection.query(
+          'SELECT price, room_name, status FROM room WHERE id = ?', 
+          [room.room_id]
+        );
 
-          if (!roomInfo.length) {
-            throw new Error(`Không tìm thấy phòng với ID ${room.room_id}`);
-          }
+        if (!roomInfo.length) {
+          throw new Error(`Không tìm thấy phòng với ID ${room.room_id}`);
+        }
 
-          // Tính giá phòng
-          const { totalHours, totalPrice } = calculateRoomPrice({
-            startTime: room.start_time,
-            endTime: room.end_time,
-            roomPrice: roomInfo[0].price
-          });
+        if (roomInfo[0].status !== 'ACTIVE') {
+          throw new Error(`Phòng ${roomInfo[0].room_name} hiện không khả dụng`);
+        }
 
-          totalOrderPrice += totalPrice;
+        const { totalHours, totalPrice } = calculateRoomPrice({
+          startTime: room.start_time,
+          endTime: room.end_time,
+          roomPrice: roomInfo[0].price
+        });
 
-          // Lưu chi tiết đặt phòng
-          await connection.query(`
-            INSERT INTO room_order_detail 
-            (order_id, room_id, start_time, end_time, total_time, total_price)
-            VALUES (?, ?, ?, ?, ?, ?)
-          `, [
+        totalOrderPrice += totalPrice;
+      }
+    }
+
+    // Tạo order mới
+    const [orderResult] = await connection.query(
+      `INSERT INTO orders 
+       (user_id, total_money, status, payment_method, payment_status) 
+       VALUES (?, ?, ?, ?, ?)`,
+      [
+        user_id,
+        totalOrderPrice,
+        payment_method === 2 ? 'PENDING' : 'CONFIRMED',
+        payment_method,
+        payment_method === 2 ? 0 : 1
+      ]
+    );
+
+    const order_id = orderResult.insertId;
+
+    // Thêm chi tiết đặt phòng
+    if (rooms && rooms.length > 0) {
+      for (const room of rooms) {
+        const { totalHours, totalPrice } = calculateRoomPrice({
+          startTime: room.start_time,
+          endTime: room.end_time,
+          roomPrice: room.price
+        });
+
+        await connection.query(
+          `INSERT INTO room_order_detail 
+           (order_id, room_id, start_time, end_time, total_time, total_price)
+           VALUES (?, ?, ?, ?, ?, ?)`,
+          [
             order_id,
             room.room_id,
             room.start_time,
             room.end_time,
             totalHours,
             totalPrice
-          ]);
-        } catch (error) {
-          await connection.rollback();
-          return responseError(res, {
-            message: `Lỗi khi xử lý phòng: ${error.message}`
-          });
-        }
-      }
-    }
-
-    // 2. Xử lý đặt sản phẩm
-    if (products && products.length > 0) {
-      for (const product of products) {
-        const [productInfo] = await connection.query(
-          'SELECT price FROM product WHERE id = ?',
-          [product.product_id]
+          ]
         );
-
-        if (!productInfo.length) {
-          await connection.rollback();
-          return responseError(res, {
-            message: `Không tìm thấy sản phẩm với ID ${product.product_id}`
-          });
-        }
-
-        const productPrice = productInfo[0].price * product.quantity;
-        totalOrderPrice += productPrice;
-
-        await connection.query(`
-          INSERT INTO order_detail 
-          (order_id, product_id, quantity, price)
-          VALUES (?, ?, ?, ?)
-        `, [
-          order_id,
-          product.product_id,
-          product.quantity,
-          productInfo[0].price
-        ]);
       }
     }
-
-    // 3. Cập nhật tổng tiền
-    await connection.query(
-      'UPDATE orders SET total_money = ? WHERE id = ?',
-      [totalOrderPrice, order_id]
-    );
 
     await connection.commit();
 
-    // Gửi email
-    const sendEmail = {
-      order_id,
-      username,
-      total: totalOrderPrice,
-      email
-    };
-    await sendMail(getOrderSuccessNotify(sendEmail));
-
     return responseSuccess(res, {
-      message: "Tạo mới hóa đơn thành công",
+      message: "Tạo đơn hàng thành công",
       data: {
         order_id,
         total_money: totalOrderPrice,
-        breakdown: {
-          rooms: rooms?.length || 0,
-          products: products?.length || 0
-        }
+        payment_method,
+        status: payment_method === 2 ? 'PENDING' : 'CONFIRMED'
       }
     });
 
   } catch (error) {
-    if (connection) await connection.rollback();
+    if (connection) {
+      await connection.rollback();
+    }
     console.error("Create order error:", error);
-    return responseError(res, error);
+    return responseError(res, {
+      message: error.message || "Có lỗi xảy ra khi tạo đơn hàng"
+    });
+  } finally {
+    if (connection) {
+      connection.release(); // Trả connection về pool thay vì đóng
+    }
   }
 };
 
@@ -1096,7 +1074,7 @@ export const approveExtendRoom = async (req, res) => {
         WHERE id = ?
       `, [newEndTime, totalHours, totalPrice, request.room_order_id]);
 
-      // Cập nhật tổng tiền orders (bao g���m cả sản phẩm)
+      // Cập nhật tổng tiền orders (bao gồm cả sản phẩm)
       await connection.query(`
         UPDATE orders o
         SET total_money = (

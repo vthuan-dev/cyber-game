@@ -42,27 +42,27 @@ export const deleteCart = () => {
    });
 };
 
-export const createOrder = ({ handleClose }: { handleClose: (res: any) => void }) => {
+export const createOrder = ({ onSuccess }: { onSuccess: (res: any) => void }) => {
    const queryClient = useQueryClient();
 
    return useMutation({
-      mutationFn: (data) => postRequest('/order/add', data),
-      onSuccess: (res) => {
-         console.log('res:', res);
+      mutationFn: (data: any) => postRequest('/order/add', data),
+      onSuccess: (res: any) => {
+         console.log('Create order response:', res);
          queryClient.refetchQueries({
             queryKey: ['Cart'],
          });
-
-         handleClose(res);
-         toast.success('Tạo đơn hàng thành công.');
+         
+         if (onSuccess && typeof onSuccess === 'function') {
+            onSuccess(res);
+         }
       },
       onError: (error: any) => {
-         // Lấy thông báo lỗi từ response của API
+         console.error('Create order error:', error);
          const errorMessage = error?.response?.data?.message || 'Có lỗi xảy ra, vui lòng thử lại!';
 
-         // Nếu lỗi có thông báo liên quan đến việc phòng đã được đặt
          if (errorMessage.includes('Phòng đã được đặt trong khoảng thời gian này')) {
-            toast.error('Lỗi: ' + errorMessage); // Hiển thị thông báo lỗi cụ thể
+            toast.error('Lỗi: ' + errorMessage);
          } else {
             toast.error('Có lỗi xảy ra, vui lòng thử lại!');
          }

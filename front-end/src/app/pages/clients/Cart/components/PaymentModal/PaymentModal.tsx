@@ -7,6 +7,7 @@
 /* eslint-disable @typescript-eslint/naming-convention */
 /* eslint-disable @typescript-eslint/no-misused-promises */
 import React, { useRef, useState } from 'react';
+import { toast } from 'react-toastify';
 import {
    Button,
    Modal,
@@ -55,22 +56,102 @@ const PaymentModal: React.FC<PaymentModalProps> = ({ isOpen, onClose, from, room
       roomIds: rooms.map((item: any) => item.room_id),
    } as any);
 
-   const handleClose = (res: any) => {
-      if (paymentMethod === 'card') {
-         if (res && 'insertId' in res) {
-            orderIdRef.current.value = res.insertId as number;
-            buttonSubmitRef.current && buttonSubmitRef.current.click();
-         }
-      }
+   const handleClose = async (res: any) => {
+      console.log('Handle close called with response:', res);
+      console.log('Current payment method:', paymentMethod);
 
-      onClose();
-      from.reset();
+      try {
+         if (paymentMethod === 'card') {
+            // Gọi API thanh toán ngay khi có order_id
+            const paymentRequestData = {
+               amount: res.data.total_money,
+               orderId: res.data.order_id,
+            };
+            console.log('Sending payment request with data:', paymentRequestData);
+
+            const response = await fetch(`${SETTINGS_CONFIG.API_URL}/order/add/payment`, {
+               method: 'POST',
+               headers: {
+                  'Content-Type': 'application/json',
+               },
+               body: JSON.stringify(paymentRequestData),
+            });
+
+            const paymentData = await response.json();
+            console.log('Payment API response:', paymentData);
+
+            if (paymentData.success && paymentData.data?.vnpUrl) {
+               // Chuyển hướng đến trang thanh toán VNPay
+               window.location.href = paymentData.data.vnpUrl;
+            } else {
+               toast.error(paymentData.message || 'Có lỗi xảy ra khi tạo thanh toán');
+            }
+         } else {
+            // Thanh toán tiền mặt
+            onClose();
+            from.reset();
+            if (res?.data?.order_id) {
+               toast.success('Đặt hàng thành công');
+            }
+         }
+      } catch (error) {
+         console.error('Payment process error:', error);
+         toast.error('Có lỗi xảy ra trong quá trình thanh toán');
+      }
    };
 
-   const { mutate } = createOrder({ handleClose });
+   const { mutate } = createOrder({
+      onSuccess: async (res: any) => {
+         console.log('Order created successfully:', res);
+         
+         if (paymentMethod === 'card') {
+            try {
+               const { order_id, total_money } = res.data;
+               
+               if (!order_id) {
+                  throw new Error('Không tìm thấy order ID');
+               }
+
+               const paymentRequestData = {
+                  amount: total_money,
+                  orderId: order_id
+               };
+
+               const response = await fetch(`${SETTINGS_CONFIG.API_URL}/order/add/payment`, {
+                  method: 'POST',
+                  headers: {
+                     'Content-Type': 'application/json',
+                  },
+                  body: JSON.stringify(paymentRequestData),
+               });
+
+               const paymentData = await response.json();
+               
+               if (paymentData.success && paymentData.data?.vnpUrl) {
+                  window.location.href = paymentData.data.vnpUrl;
+               } else {
+                  throw new Error(paymentData.message || 'Có lỗi xảy ra khi tạo thanh toán');
+               }
+            } catch (error) {
+               console.error('Payment process error:', error);
+               toast.error(error.message || 'Có lỗi xảy ra trong quá trình thanh toán');
+            }
+         } else {
+            onClose();
+            from.reset();
+            toast.success('Đặt hàng thành công');
+         }
+      },
+      onError: (error: any) => {
+         console.error('Create order error:', error);
+         toast.error(error.message || 'Có lỗi xảy ra khi tạo đơn hàng');
+      }
+   });
 
    const handlePaymentMethodChange = (event: React.ChangeEvent<HTMLInputElement>) => {
-      setPaymentMethod(event.target.value as any);
+      const newValue = event.target.value as 'cash' | 'card';
+      console.log('Payment method changed to:', newValue);
+      setPaymentMethod(newValue);
    };
 
    const handleRoomChange = (index: number, field: 'start_time' | 'end_time', value: Date | null) => {
@@ -95,73 +176,43 @@ const PaymentModal: React.FC<PaymentModalProps> = ({ isOpen, onClose, from, room
       }
    };
 
-   const onSubmitForm: SubmitHandler<PaymentModalType> = (data) => {
-      priceRef.current = data.total_money;
+   const onSubmit: SubmitHandler<PaymentModalType> = async (data) => {
+      try {
+         const formattedData = {
+            ...data,
+            payment_method: paymentMethod === 'card' ? 2 : 1,
+            user_id: user?.id
+         };
 
-      // Initialize an array to track any validation errors
-      let hasError = false;
-
-      const roomsToSubmit = data.rooms.map((room, index) => {
-         const roomTimeline = dataRoomOrderTimeline?.find((timeline: any) => {
-            return Number(timeline.room_id) === Number(room.room_id);
-         });
-
-         if (roomTimeline) {
-            const roomStartTime = dayjs(room.start_time).utc();
-            const roomEndTime = dayjs(room.end_time).utc();
-            const roomTimelineStartTime = dayjs(roomTimeline.start_time).utc();
-            const roomTimelineEndTime = dayjs(roomTimeline.end_time).utc();
-
-            const isTimeOverlap =
-               roomStartTime.isBefore(roomTimelineEndTime) && roomEndTime.isAfter(roomTimelineStartTime);
-
-            if (isTimeOverlap) {
-               setError(`rooms[${index}].start_time` as never, {
-                  type: 'manual',
-                  message: `Thời gian của phòng ${room.room_id} trùng với một đơn đặt phòng đã có.`,
-               });
-               hasError = true;
-            }
+         const response = await createOrder(formattedData);
+         
+         // Kiểm tra response và lấy order_id
+         const orderData = response?.data;
+         if (!orderData || !orderData.order_id) {
+            throw new Error('Không nhận được thông tin đơn hàng');
          }
 
-         return room; // Keep the room object in the map to submit
-      });
-
-      // If there are any validation errors, do not proceed with mutation
-      if (hasError) {
-         return console.log('There is an overlap in room times');
-      } else {
-         // Perform the mutation if no errors
-         mutate({
-            ...data,
-            payment_method: paymentMethod === 'cash' ? 1 : 2,
-            rooms: data.rooms.map((item) => ({
-               ...item,
-               end_time: dayjs(item.end_time).format('YYYY-MM-DD HH:mm:ss'),
-               start_time: dayjs(item.start_time).format('YYYY-MM-DD HH:mm:ss'),
-            })),
-            user_id: user?.id,
-            username: user?.username,
-            email: user?.email,
-            order_date: '',
-         } as any);
+         if (paymentMethod === 'card') {
+            // Xử lý thanh toán qua thẻ
+            window.location.href = `${SETTINGS_CONFIG.API_URL}/payment/process/${orderData.order_id}`;
+         } else {
+            // Thanh toán tiền mặt
+            toast.success('Đặt phòng thành công!');
+            onClose();
+         }
+      } catch (error) {
+         console.error('Payment error:', error);
+         toast.error('Có lỗi xảy ra khi xử lý thanh toán');
       }
    };
 
-   const actionPaymentUrl = SETTINGS_CONFIG.API_URL + '/order/add/payment';
-   console.log('from.formState.errors', from.formState.errors);
    return (
-      <Modal
-         open={isOpen}
-         onClose={handleClose}
-         aria-labelledby="modal-modal-title"
-         aria-describedby="modal-modal-description"
-      >
+      <Modal open={isOpen} onClose={onClose}>
          <Box sx={style}>
             <Typography variant="h5" p={2}>
                Thông tin đặt phòng
             </Typography>
-            <form onSubmit={from.handleSubmit(onSubmitForm)}>
+            <form onSubmit={from.handleSubmit(onSubmit)}>
                <Box p={2} pt={0}>
                   {getValues('rooms').map((room, index) => (
                      <Box key={room.room_id} mb={2}>
@@ -206,52 +257,33 @@ const PaymentModal: React.FC<PaymentModalProps> = ({ isOpen, onClose, from, room
                   ))}
                   <Box width="max-content">
                      <RadioGroup
-                        aria-labelledby="demo-radio-buttons-group-label"
                         value={paymentMethod}
                         onChange={handlePaymentMethodChange}
+                        name="payment-method"
                         sx={{ mt: 2 }}
                      >
                         <FormControlLabel
                            value="cash"
                            control={<Radio />}
-                           checked={paymentMethod === 'cash'}
-                           onChange={() => setPaymentMethod('cash')}
                            label="Tiền mặt"
                         />
                         <FormControlLabel
                            value="card"
                            control={<Radio />}
-                           checked={paymentMethod === 'card'}
-                           onChange={() => setPaymentMethod('card')}
                            label="Thẻ ngân hàng"
                         />
-                        {/* Thêm các phương thức thanh toán khác */}
                      </RadioGroup>
                   </Box>
                   <Box display="flex" justifyContent="end" gap={2} mt={3}>
-                     <Button variant="outlined" color="error" onClick={handleClose}>
+                     <Button variant="outlined" color="error" onClick={onClose}>
                         Hủy
                      </Button>
-                     <Button
-                        type="submit"
-                        variant="contained"
-                        onClick={() => {
-                           /* Logic xác nhận */
-                           from.handleSubmit(onSubmitForm);
-                        }}
-                     >
+                     <Button type="submit" variant="contained">
                         Xác nhận
                      </Button>
                   </Box>
                </Box>
             </form>
-            <Box component="form" sx={{ visibility: 'hidden', opacity: 0 }} action={actionPaymentUrl} method="post">
-               <input name="amount" type="number" value={priceRef.current} />
-               <input type="text" name="orderId" ref={orderIdRef} />
-               <button ref={buttonSubmitRef} type="submit">
-                  purchase
-               </button>
-            </Box>
          </Box>
       </Modal>
    );
